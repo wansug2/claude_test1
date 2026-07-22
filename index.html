@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>열화상 열역학 시뮬레이션</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #sim {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    cursor: crosshair;
+    image-rendering: pixelated;
+  }
+  #hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+    line-height: 1.5;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    pointer-events: none;
+    user-select: none;
+  }
+  #hud .title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  #hud .hint {
+    opacity: 0.7;
+  }
+  #readout {
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  #legend {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 22px;
+    height: 180px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    pointer-events: none;
+    display: flex;
+  }
+  #legendBar {
+    flex: 1;
+    height: 100%;
+  }
+  #legendLabels {
+    position: fixed;
+    bottom: 12px;
+    right: 44px;
+    height: 190px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 11px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: right;
+    pointer-events: none;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+<canvas id="sim"></canvas>
+<div id="hud">
+  <div class="title">🔥 열화상 열역학 시뮬레이션</div>
+  <div class="hint">철판을 클릭 / 누르고 있으면 300°C로 계속 가열됩니다</div>
+  <div id="readout">—</div>
+</div>
+<div id="legendLabels">
+  <span>300°C</span>
+  <span>230°C</span>
+  <span>160°C</span>
+  <span>90°C</span>
+  <span>20°C</span>
+</div>
+<div id="legend"><canvas id="legendBar" width="1" height="180"></canvas></div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// 파라미터
+// ---------------------------------------------------------------------------
+const AMBIENT   = 20;     // 주변(초기) 온도 [°C]
+const HEAT_TEMP = 300;    // 가열 지점 온도 [°C]
+const T_MIN     = 20;     // 컬러맵 최소 온도
+const T_MAX     = 300;    // 컬러맵 최대 온도
+const BRUSH     = 3;      // 가열 브러시 반지름 (셀 단위)
+
+// 열확산: 안정성을 위해 알파(확산계수)는 0.24 이하 유지 (2D 명시적 스킴 한계 0.25)
+const ALPHA     = 0.20;   // 확산 강도
+const COOLING   = 0.0006; // 주변 공기로의 방열 계수 (뉴턴 냉각)
+const SUBSTEPS  = 2;      // 프레임당 시뮬레이션 반복 (확산 속도 ↑)
+
+// 시뮬레이션 격자 해상도 (실제 화면보다 낮게 잡아 성능 확보)
+const CELL_SIZE = 4;      // 셀 1개가 차지하는 화면 픽셀
+
+// ---------------------------------------------------------------------------
+// 캔버스 & 격자
+// ---------------------------------------------------------------------------
+const canvas = document.getElementById("sim");
+const ctx = canvas.getContext("2d", { alpha: false });
+const readout = document.getElementById("readout");
+
+let cols, rows;
+let temp, next;        // 온도 격자 (Float32Array)
+let imgData, img32;    // 렌더링 버퍼
+let LUT;               // 온도→색상 룩업 테이블
+
+// 마우스/터치 입력 상태
+const pointers = new Map(); // id -> {x, y} (격자 좌표)
+
+function buildLUT() {
+  // iron / thermal 컬러맵을 미리 계산 (0..1023 단계)
+  const N = 1024;
+  LUT = new Uint32Array(N);
+  const isLE = (() => {
+    const b = new ArrayBuffer(4);
+    new Uint32Array(b)[0] = 0x01020304;
+    return new Uint8Array(b)[0] === 0x04;
+  })();
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);
+    const [r, g, b] = ironColor(t);
+    // ABGR (little-endian) 또는 RGBA 패킹
+    LUT[i] = isLE
+      ? (255 << 24) | (b << 16) | (g << 8) | r
+      : (r << 24) | (g << 16) | (b << 8) | 255;
+  }
+}
+
+// FLIR "iron" 스타일 컬러맵: 검정→보라→빨강→주황→노랑→흰색
+function ironColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  // 컨트롤 포인트 (위치, R, G, B)
+  const stops = [
+    [0.00,   0,   0,   0],   // 차가움: 검정
+    [0.15,  30,   0,  60],   // 어두운 보라
+    [0.32, 110,   0, 120],   // 보라/자주
+    [0.50, 200,  30,  70],   // 붉은색
+    [0.68, 245, 110,   0],   // 주황
+    [0.85, 255, 200,  30],   // 노랑
+    [1.00, 255, 255, 235],   // 뜨거움: 밝은 흰색
+  ];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i], b = stops[i + 1];
+    if (t >= a[0] && t <= b[0]) {
+      const f = (t - a[0]) / (b[0] - a[0]);
+      return [
+        Math.round(a[1] + (b[1] - a[1]) * f),
+        Math.round(a[2] + (b[2] - a[2]) * f),
+        Math.round(a[3] + (b[3] - a[3]) * f),
+      ];
+    }
+  }
+  return [255, 255, 235];
+}
+
+function tempToColor(T) {
+  let t = (T - T_MIN) / (T_MAX - T_MIN);
+  t = Math.max(0, Math.min(1, t));
+  return LUT[(t * 1023) | 0];
+}
+
+// ---------------------------------------------------------------------------
+// 크기 조정 / 초기화
+// ---------------------------------------------------------------------------
+function resize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  canvas.width = w;
+  canvas.height = h;
+
+  cols = Math.max(2, Math.floor(w / CELL_SIZE));
+  rows = Math.max(2, Math.floor(h / CELL_SIZE));
+
+  const old = temp;
+  const oldCols = old ? cols_prev : 0;
+
+  temp = new Float32Array(cols * rows).fill(AMBIENT);
+  next = new Float32Array(cols * rows).fill(AMBIENT);
+
+  // 이전 온도 분포를 최대한 유지 (크기 변경 시)
+  if (old && cols_prev && rows_prev) {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const ox = Math.min(cols_prev - 1, Math.floor(x * cols_prev / cols));
+        const oy = Math.min(rows_prev - 1, Math.floor(y * rows_prev / rows));
+        temp[y * cols + x] = old[oy * cols_prev + ox];
+      }
+    }
+  }
+  cols_prev = cols;
+  rows_prev = rows;
+
+  // 오프스크린 저해상도 버퍼
+  imgData = ctx.createImageData(cols, rows);
+  img32 = new Uint32Array(imgData.data.buffer);
+}
+let cols_prev = 0, rows_prev = 0;
+
+// ---------------------------------------------------------------------------
+// 시뮬레이션 스텝 (2D 열방정식, 명시적 유한차분)
+// ---------------------------------------------------------------------------
+function step() {
+  const t = temp, n = next;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const i = y * cols + x;
+      const c = t[i];
+      // 노이만 경계조건(단열): 격자 밖은 자기 자신 값으로 반사
+      const up    = y > 0        ? t[i - cols] : c;
+      const down  = y < rows - 1 ? t[i + cols] : c;
+      const left  = x > 0        ? t[i - 1]    : c;
+      const right = x < cols - 1 ? t[i + 1]    : c;
+      // 라플라시안 * 확산계수
+      const lap = (up + down + left + right - 4 * c);
+      let v = c + ALPHA * lap;
+      // 주변 공기로의 방열 (뉴턴 냉각)
+      v += (AMBIENT - v) * COOLING;
+      n[i] = v;
+    }
+  }
+  temp = n;
+  next = t;
+}
+
+// ---------------------------------------------------------------------------
+// 가열: 눌린 지점을 300°C로 고정 (브러시 영역)
+// ---------------------------------------------------------------------------
+function applyHeat() {
+  for (const p of pointers.values()) {
+    const cx = p.x, cy = p.y;
+    for (let dy = -BRUSH; dy <= BRUSH; dy++) {
+      for (let dx = -BRUSH; dx <= BRUSH; dx++) {
+        if (dx * dx + dy * dy > BRUSH * BRUSH) continue;
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
+        const i = y * cols + x;
+        // 중심일수록 강하게, 가장자리는 부드럽게
+        const falloff = 1 - Math.sqrt(dx * dx + dy * dy) / (BRUSH + 1);
+        const target = AMBIENT + (HEAT_TEMP - AMBIENT) * falloff;
+        if (temp[i] < target) temp[i] = target;
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 렌더링
+// ---------------------------------------------------------------------------
+const off = document.createElement("canvas");
+const offCtx = off.getContext("2d");
+
+function render() {
+  for (let i = 0; i < temp.length; i++) {
+    img32[i] = tempToColor(temp[i]);
+  }
+  off.width = cols;
+  off.height = rows;
+  offCtx.putImageData(imgData, 0, 0);
+  // 저해상도 격자를 화면 전체로 확대 (부드러운 보간)
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(off, 0, 0, cols, rows, 0, 0, canvas.width, canvas.height);
+}
+
+// ---------------------------------------------------------------------------
+// 메인 루프
+// ---------------------------------------------------------------------------
+let hottest = AMBIENT;
+function loop() {
+  for (let s = 0; s < SUBSTEPS; s++) {
+    applyHeat();
+    step();
+  }
+  render();
+
+  // 가장 뜨거운 지점 표시
+  hottest = AMBIENT;
+  for (let i = 0; i < temp.length; i++) {
+    if (temp[i] > hottest) hottest = temp[i];
+  }
+  readout.textContent =
+    `최고 온도: ${hottest.toFixed(1)}°C   |   주변: ${AMBIENT}°C   |   격자: ${cols}×${rows}`;
+
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------------------
+// 입력 처리 (마우스 + 터치, 멀티포인트 지원)
+// ---------------------------------------------------------------------------
+function toCell(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((clientX - rect.left) / rect.width * cols);
+  const y = Math.floor((clientY - rect.top) / rect.height * rows);
+  return { x: Math.max(0, Math.min(cols - 1, x)), y: Math.max(0, Math.min(rows - 1, y)) };
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, toCell(e.clientX, e.clientY));
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (pointers.has(e.pointerId)) {
+    pointers.set(e.pointerId, toCell(e.clientX, e.clientY));
+  }
+});
+function release(e) {
+  pointers.delete(e.pointerId);
+}
+canvas.addEventListener("pointerup", release);
+canvas.addEventListener("pointercancel", release);
+canvas.addEventListener("pointerleave", release);
+
+window.addEventListener("resize", resize);
+window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// ---------------------------------------------------------------------------
+// 범례 그리기
+// ---------------------------------------------------------------------------
+function drawLegend() {
+  const lc = document.getElementById("legendBar");
+  const lctx = lc.getContext("2d");
+  const h = lc.height;
+  for (let y = 0; y < h; y++) {
+    const t = 1 - y / (h - 1); // 위가 뜨거움
+    const [r, g, b] = ironColor(t);
+    lctx.fillStyle = `rgb(${r},${g},${b})`;
+    lctx.fillRect(0, y, lc.width, 1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 시작
+// ---------------------------------------------------------------------------
+buildLUT();
+resize();
+drawLegend();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
