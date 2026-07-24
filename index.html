@@ -6,196 +6,139 @@
 <title>열화상 열역학 시뮬레이션</title>
 <style>
   html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    touch-action: none;
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #000; touch-action: none;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   #sim {
-    display: block;
-    width: 100vw;
-    height: 100vh;
-    cursor: crosshair;
-    image-rendering: pixelated;
+    display: block; width: 100vw; height: 100vh;
+    cursor: crosshair; image-rendering: pixelated;
   }
   #hud {
-    position: fixed;
-    top: 12px;
-    left: 12px;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 13px;
-    line-height: 1.5;
+    position: fixed; top: 12px; left: 12px;
+    color: rgba(255, 255, 255, 0.85); font-size: 13px; line-height: 1.5;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-    pointer-events: none;
-    user-select: none;
+    pointer-events: none; user-select: none; max-width: 60vw;
   }
-  #hud .title {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-  #hud .hint {
-    opacity: 0.7;
-  }
-  #readout {
-    margin-top: 6px;
-    font-variant-numeric: tabular-nums;
-  }
+  #hud .title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  #hud .hint { opacity: 0.7; }
+  #readout { margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  /* 범례: 우측 상단 (하단 컨트롤 패널과 겹치지 않게) */
   #legend {
-    position: fixed;
-    bottom: 120px;         /* 하단 슬라이더 패널 위로 띄움 */
-    right: 16px;
-    width: 22px;
-    height: 180px;
+    position: fixed; top: 16px; right: 16px;
+    width: 20px; height: 170px;
     border: 1px solid rgba(255, 255, 255, 0.3);
-    pointer-events: none;
-    display: flex;
+    pointer-events: none; display: flex;
   }
-  #legendBar {
-    flex: 1;
-    height: 100%;
-  }
+  #legendBar { flex: 1; height: 100%; }
   #legendLabels {
-    position: fixed;
-    bottom: 116px;         /* 범례 눈금도 함께 올림 */
-    right: 44px;
-    height: 190px;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 11px;
+    position: fixed; top: 12px; right: 42px; height: 178px;
+    color: rgba(255, 255, 255, 0.85); font-size: 11px;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    text-align: right;
-    pointer-events: none;
-    user-select: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    text-align: right; pointer-events: none; user-select: none;
     font-variant-numeric: tabular-nums;
   }
-  /* 하단 온도 선택 슬라이더 */
+
+  /* 하단 컨트롤 패널 */
   #controls {
-    position: fixed;
-    left: 50%;
-    bottom: 18px;
-    transform: translateX(-50%);
-    width: min(92vw, 560px);
-    box-sizing: border-box;
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    width: min(96vw, 720px); box-sizing: border-box;
     padding: 12px 16px 14px;
-    background: rgba(15, 15, 18, 0.62);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 14px;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: rgba(15, 15, 18, 0.66);
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 14px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     color: rgba(255, 255, 255, 0.9);
-    user-select: none;
-    -webkit-user-select: none;
-    /* 슬라이더는 캔버스 위에서 조작 가능해야 하므로 pointer-events 활성 */
+    user-select: none; -webkit-user-select: none;
+    max-height: 52vh; overflow-y: auto;
   }
-  #controls .row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 8px;
+  #sliders {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px;
   }
-  #controls .label {
-    font-size: 12px;
-    opacity: 0.75;
+  @media (max-width: 520px) { #sliders { grid-template-columns: 1fr; } }
+  .ctl .top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; opacity: 0.85; margin-bottom: 3px;
   }
-  #controls .right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .ctl .val {
+    color: #ffb04a; font-weight: 700; font-variant-numeric: tabular-nums;
   }
-  #controls #tempValue {
-    font-size: 20px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    color: #ffb04a;
-    text-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
+  #controls input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
+    border-radius: 5px; outline: none; margin: 0; cursor: pointer;
+    background: rgba(255, 255, 255, 0.16);
   }
-  #resetBtn {
-    font: inherit;
-    font-size: 12px;
-    color: #cfe8ff;
-    background: rgba(80, 140, 220, 0.18);
-    border: 1px solid rgba(120, 180, 255, 0.5);
-    border-radius: 8px;
-    padding: 5px 10px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
-  }
-  #resetBtn:hover { background: rgba(80, 140, 220, 0.35); }
-  #resetBtn:active { background: rgba(80, 140, 220, 0.55); }
-  #tempRange {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
+  #controls input[type=range].iron {
     height: 10px;
-    border-radius: 6px;
-    outline: none;
-    margin: 0;
-    /* 차가움→뜨거움 그라디언트 (iron 컬러맵 근사) */
     background: linear-gradient(90deg,
       #000000 0%, #1e003c 12%, #6e0078 30%,
       #c81e46 50%, #f56e00 68%, #ffc81e 84%, #ffffeb 100%);
-    cursor: pointer;
   }
-  #tempRange::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: #fff;
-    border: 3px solid #ff8c00;
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
-    cursor: pointer;
+  #controls input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; border: 2px solid #ff8c00;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.6); cursor: pointer;
   }
-  #tempRange::-moz-range-thumb {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: #fff;
-    border: 3px solid #ff8c00;
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
-    cursor: pointer;
+  #controls input[type=range]::-moz-range-thumb {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; border: 2px solid #ff8c00;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.6); cursor: pointer;
   }
-  #tempTicks {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 6px;
-    font-size: 10px;
-    opacity: 0.6;
-    font-variant-numeric: tabular-nums;
+
+  .sectionLabel {
+    font-size: 11px; opacity: 0.55; margin: 12px 0 6px; letter-spacing: 0.3px;
   }
+  #patterns { display: flex; flex-wrap: wrap; gap: 6px; }
+  #patterns button {
+    font: inherit; font-size: 12px; color: #eee;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px; padding: 6px 9px; cursor: pointer;
+    transition: background 0.12s;
+  }
+  #patterns button:hover { background: rgba(255, 255, 255, 0.18); }
+  #patterns button:active { background: rgba(255, 255, 255, 0.28); }
+
+  #actions { display: flex; gap: 8px; margin-top: 10px; }
+  #actions button {
+    font: inherit; font-size: 12px; border-radius: 8px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap;
+    transition: background 0.12s;
+  }
+  #autoBtn {
+    color: #ffe0b0; background: rgba(255, 140, 0, 0.16);
+    border: 1px solid rgba(255, 160, 40, 0.5);
+  }
+  #autoBtn.on {
+    color: #fff; background: rgba(255, 140, 0, 0.55);
+    border-color: #ff8c00;
+  }
+  #resetBtn {
+    color: #cfe8ff; background: rgba(80, 140, 220, 0.18);
+    border: 1px solid rgba(120, 180, 255, 0.5);
+  }
+  #resetBtn:hover { background: rgba(80, 140, 220, 0.35); }
 </style>
 </head>
 <body>
 <canvas id="sim"></canvas>
 <div id="hud">
   <div class="title">🔥 열화상 열역학 시뮬레이션</div>
-  <div class="hint">철판을 클릭 / 누르고 있으면 선택한 온도로 계속 가열됩니다</div>
+  <div class="hint">철판을 클릭/드래그하면 가열 · 아래 버튼으로 도형/글자 그리기 · 자동 그리기 지원</div>
   <div id="readout">—</div>
 </div>
 <div id="legendLabels"></div>
-<div id="legend"><canvas id="legendBar" width="1" height="180"></canvas></div>
+<div id="legend"><canvas id="legendBar" width="1" height="170"></canvas></div>
 
 <div id="controls">
-  <div class="row">
-    <span class="label">가열 온도</span>
-    <span class="right">
-      <span id="tempValue">300°C</span>
-      <button id="resetBtn" type="button">❄ 전체 식히기</button>
-    </span>
-  </div>
-  <input id="tempRange" type="range" min="100" max="1000" step="100" value="300">
-  <div id="tempTicks">
-    <span>100</span><span>200</span><span>300</span><span>400</span><span>500</span>
-    <span>600</span><span>700</span><span>800</span><span>900</span><span>1000</span>
+  <div id="sliders"></div>
+  <div class="sectionLabel">✍ 손글씨 그리기 (누르면 열점이 경로를 따라가며 그림)</div>
+  <div id="patterns"></div>
+  <div id="actions">
+    <button id="autoBtn" type="button">🔄 자동 그리기</button>
+    <button id="resetBtn" type="button">❄ 전체 식히기</button>
   </div>
 </div>
 
@@ -203,26 +146,19 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// 파라미터
+// 파라미터 (슬라이더로 실시간 변경 → let)
 // ---------------------------------------------------------------------------
-const AMBIENT   = 20;     // 주변(초기) 온도 [°C]
-let   HEAT_TEMP = 300;    // 가열 지점 온도 [°C] — 하단 슬라이더로 변경
-const T_MIN     = 20;     // 컬러맵 최소 온도
-const T_MAX     = 1000;   // 컬러맵 최대 온도 (슬라이더 최대치에 맞춤)
-// 감마(<1): 저온부에 색 대비를 몰아줘 낮은 온도도 또렷하게 표시.
-// 1000°C 스케일에서도 바깥으로 퍼진 수백 °C의 열이 검게 묻히지 않게 함.
-const COLOR_GAMMA = 0.55;
-const BRUSH     = 3;      // 가열 브러시 반지름 (셀 단위)
+const AMBIENT   = 20;      // 주변(초기) 온도 [°C]
+let   HEAT_TEMP = 300;     // 가열 지점 온도 [°C]
+const T_MIN     = 20;      // 컬러맵 최소 온도
+const T_MAX     = 1000;    // 컬러맵 최대 온도
+const COLOR_GAMMA = 0.55;  // 감마(<1): 저온부 색 대비 강조 → 퍼진 열도 또렷하게
 
-// 열확산: 안정성을 위해 알파(확산계수)는 0.25 미만 유지 (2D 명시적 스킴 한계)
-const ALPHA     = 0.22;   // 확산 강도
-// 뉴턴 냉각: 퍼짐(넓은 영역 가열)과 식음(손 뗐을 때 상온 복귀)의 균형점.
-// 너무 크면 열점만, 너무 작으면 안 식음. 손 떼면 ~15~20초에 걸쳐 식도록 설정.
-const COOLING   = 0.0002;
-const SUBSTEPS  = 5;      // 프레임당 시뮬레이션 반복 (확산 속도)
-
-// 시뮬레이션 격자 해상도 (실제 화면보다 낮게 잡아 성능 확보)
-const CELL_SIZE = 6;      // 셀 1개가 차지하는 화면 픽셀
+let   BRUSH     = 3;       // 가열 붓 반지름 (셀)
+let   ALPHA     = 0.22;    // 확산 강도 (안정 한계 0.25 미만)
+let   COOLING   = 0.0002;  // 뉴턴 냉각 (퍼짐 vs 식음 균형)
+let   SUBSTEPS  = 5;       // 프레임당 시뮬레이션 반복 (확산 속도)
+let   CELL_SIZE = 6;       // 셀 1개가 차지하는 화면 픽셀 (해상도)
 
 // ---------------------------------------------------------------------------
 // 캔버스 & 격자
@@ -235,12 +171,11 @@ let cols, rows;
 let temp, next;        // 온도 격자 (Float32Array)
 let imgData, img32;    // 렌더링 버퍼
 let LUT;               // 온도→색상 룩업 테이블
+let cols_prev = 0, rows_prev = 0;
 
-// 마우스/터치 입력 상태
 const pointers = new Map(); // id -> {x, y} (격자 좌표)
 
 function buildLUT() {
-  // iron / thermal 컬러맵을 미리 계산 (0..1023 단계)
   const N = 1024;
   LUT = new Uint32Array(N);
   const isLE = (() => {
@@ -251,25 +186,23 @@ function buildLUT() {
   for (let i = 0; i < N; i++) {
     const t = i / (N - 1);
     const [r, g, b] = ironColor(t);
-    // ABGR (little-endian) 또는 RGBA 패킹
     LUT[i] = isLE
       ? (255 << 24) | (b << 16) | (g << 8) | r
       : (r << 24) | (g << 16) | (b << 8) | 255;
   }
 }
 
-// FLIR "iron" 스타일 컬러맵: 검정→보라→빨강→주황→노랑→흰색
+// FLIR "iron" 컬러맵: 검정→보라→빨강→주황→노랑→흰색
 function ironColor(t) {
   t = Math.max(0, Math.min(1, t));
-  // 컨트롤 포인트 (위치, R, G, B)
   const stops = [
-    [0.00,   0,   0,   0],   // 차가움: 검정
-    [0.15,  30,   0,  60],   // 어두운 보라
-    [0.32, 110,   0, 120],   // 보라/자주
-    [0.50, 200,  30,  70],   // 붉은색
-    [0.68, 245, 110,   0],   // 주황
-    [0.85, 255, 200,  30],   // 노랑
-    [1.00, 255, 255, 235],   // 뜨거움: 밝은 흰색
+    [0.00,   0,   0,   0],
+    [0.15,  30,   0,  60],
+    [0.32, 110,   0, 120],
+    [0.50, 200,  30,  70],
+    [0.68, 245, 110,   0],
+    [0.85, 255, 200,  30],
+    [1.00, 255, 255, 235],
   ];
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i], b = stops[i + 1];
@@ -288,7 +221,7 @@ function ironColor(t) {
 function tempToColor(T) {
   let t = (T - T_MIN) / (T_MAX - T_MIN);
   t = Math.max(0, Math.min(1, t));
-  t = Math.pow(t, COLOR_GAMMA);   // 감마 보정: 저온부 색 대비 강조
+  t = Math.pow(t, COLOR_GAMMA);
   return LUT[(t * 1023) | 0];
 }
 
@@ -296,21 +229,16 @@ function tempToColor(T) {
 // 크기 조정 / 초기화
 // ---------------------------------------------------------------------------
 function resize() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  canvas.width = w;
-  canvas.height = h;
+  const w = window.innerWidth, h = window.innerHeight;
+  canvas.width = w; canvas.height = h;
 
   cols = Math.max(2, Math.floor(w / CELL_SIZE));
   rows = Math.max(2, Math.floor(h / CELL_SIZE));
 
   const old = temp;
-  const oldCols = old ? cols_prev : 0;
-
   temp = new Float32Array(cols * rows).fill(AMBIENT);
   next = new Float32Array(cols * rows).fill(AMBIENT);
 
-  // 이전 온도 분포를 최대한 유지 (크기 변경 시)
   if (old && cols_prev && rows_prev) {
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
@@ -320,14 +248,11 @@ function resize() {
       }
     }
   }
-  cols_prev = cols;
-  rows_prev = rows;
+  cols_prev = cols; rows_prev = rows;
 
-  // 오프스크린 저해상도 버퍼
   imgData = ctx.createImageData(cols, rows);
   img32 = new Uint32Array(imgData.data.buffer);
 }
-let cols_prev = 0, rows_prev = 0;
 
 // ---------------------------------------------------------------------------
 // 시뮬레이션 스텝 (2D 열방정식, 명시적 유한차분)
@@ -338,42 +263,38 @@ function step() {
     for (let x = 0; x < cols; x++) {
       const i = y * cols + x;
       const c = t[i];
-      // 노이만 경계조건(단열): 격자 밖은 자기 자신 값으로 반사
-      const up    = y > 0        ? t[i - cols] : c;
+      const up    = y > 0        ? t[i - cols] : c;   // 단열(Neumann) 경계
       const down  = y < rows - 1 ? t[i + cols] : c;
       const left  = x > 0        ? t[i - 1]    : c;
       const right = x < cols - 1 ? t[i + 1]    : c;
-      // 라플라시안 * 확산계수
       const lap = (up + down + left + right - 4 * c);
       let v = c + ALPHA * lap;
-      // 주변 공기로의 방열 (뉴턴 냉각)
-      v += (AMBIENT - v) * COOLING;
+      v += (AMBIENT - v) * COOLING;                   // 뉴턴 냉각
       n[i] = v;
     }
   }
-  temp = n;
-  next = t;
+  temp = n; next = t;
 }
 
 // ---------------------------------------------------------------------------
-// 가열: 눌린 지점을 300°C로 고정 (브러시 영역)
+// 가열: 한 셀을 붓 영역으로 가열 (포인터 & 손글씨 펜 공용)
 // ---------------------------------------------------------------------------
-function applyHeat() {
-  for (const p of pointers.values()) {
-    const cx = p.x, cy = p.y;
-    for (let dy = -BRUSH; dy <= BRUSH; dy++) {
-      for (let dx = -BRUSH; dx <= BRUSH; dx++) {
-        if (dx * dx + dy * dy > BRUSH * BRUSH) continue;
-        const x = cx + dx, y = cy + dy;
-        if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
-        const i = y * cols + x;
-        // 중심일수록 강하게, 가장자리는 부드럽게
-        const falloff = 1 - Math.sqrt(dx * dx + dy * dy) / (BRUSH + 1);
-        const target = AMBIENT + (HEAT_TEMP - AMBIENT) * falloff;
-        if (temp[i] < target) temp[i] = target;
-      }
+function heatCell(cx, cy) {
+  const b = BRUSH;
+  for (let dy = -b; dy <= b; dy++) {
+    for (let dx = -b; dx <= b; dx++) {
+      if (dx * dx + dy * dy > b * b) continue;
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
+      const i = y * cols + x;
+      const falloff = 1 - Math.sqrt(dx * dx + dy * dy) / (b + 1);
+      const target = AMBIENT + (HEAT_TEMP - AMBIENT) * falloff;
+      if (temp[i] < target) temp[i] = target;
     }
   }
+}
+function applyHeat() {
+  for (const p of pointers.values()) heatCell(p.x, p.y);
 }
 
 // ---------------------------------------------------------------------------
@@ -381,17 +302,162 @@ function applyHeat() {
 // ---------------------------------------------------------------------------
 const off = document.createElement("canvas");
 const offCtx = off.getContext("2d");
-
 function render() {
-  for (let i = 0; i < temp.length; i++) {
-    img32[i] = tempToColor(temp[i]);
-  }
-  off.width = cols;
-  off.height = rows;
+  for (let i = 0; i < temp.length; i++) img32[i] = tempToColor(temp[i]);
+  off.width = cols; off.height = rows;
   offCtx.putImageData(imgData, 0, 0);
-  // 저해상도 격자를 화면 전체로 확대 (부드러운 보간)
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(off, 0, 0, cols, rows, 0, 0, canvas.width, canvas.height);
+}
+
+// ===========================================================================
+// 손글씨 그리기 엔진: 도형/글자를 경로로 정의 → 열점이 따라가며 가열
+// ===========================================================================
+// 좌표계: 정규화 [-1,1], y는 위쪽이 +. 각 패턴 = 획(stroke) 배열, 획 = 정점 배열.
+
+function arc(cx, cy, r, a0, a1, n) {
+  const p = [];
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + (a1 - a0) * (i / n);
+    p.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+  return p;
+}
+function circle(cx, cy, r, n) { return arc(cx, cy, r, 0, 2 * Math.PI, n); }
+
+function heartStroke() {
+  const p = [];
+  for (let i = 0; i <= 140; i++) {
+    const t = i / 140 * 2 * Math.PI;
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t)
+              - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    p.push({ x: x / 17, y: y / 17 });
+  }
+  return p;
+}
+function starStroke() {          // 오각별(펜타그램): 한 획으로 그림
+  const p = [];
+  for (let i = 0; i <= 5; i++) {
+    const a = -Math.PI / 2 + i * (4 * Math.PI / 5);
+    p.push({ x: Math.cos(a), y: Math.sin(a) });
+  }
+  return p;
+}
+function triangleStroke() {
+  const p = [];
+  for (let i = 0; i <= 3; i++) {
+    const a = -Math.PI / 2 + i * (2 * Math.PI / 3);
+    p.push({ x: Math.cos(a), y: Math.sin(a) });
+  }
+  return p;
+}
+function spiralStroke() {
+  const p = [], turns = 3, n = 260;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, a = t * turns * 2 * Math.PI, r = 0.15 + 0.85 * t;
+    p.push({ x: r * Math.cos(a), y: r * Math.sin(a) });
+  }
+  return p;
+}
+function infinityStroke() {       // 뉘어진 8자 (Gerono)
+  const p = [], n = 200;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n * 2 * Math.PI;
+    p.push({ x: Math.cos(t), y: 0.9 * Math.sin(2 * t) / 2 });
+  }
+  return p;
+}
+function waveStroke() {
+  const p = [], n = 200;
+  for (let i = 0; i <= n; i++) {
+    const x = -1 + 2 * i / n;
+    p.push({ x, y: 0.45 * Math.sin(x * Math.PI * 2.5) });
+  }
+  return p;
+}
+function place(strokes, ox, sx, sy) {
+  return strokes.map(st => st.map(p => ({ x: ox + p.x * sx, y: p.y * sy })));
+}
+const H_STROKES = [
+  [{ x: -0.5, y: 1 }, { x: -0.5, y: -1 }],
+  [{ x: 0.5, y: 1 }, { x: 0.5, y: -1 }],
+  [{ x: -0.5, y: 0 }, { x: 0.5, y: 0 }],
+];
+const I_STROKES = [
+  [{ x: -0.3, y: 1 }, { x: 0.3, y: 1 }],
+  [{ x: 0, y: 1 }, { x: 0, y: -1 }],
+  [{ x: -0.3, y: -1 }, { x: 0.3, y: -1 }],
+];
+
+const PATTERNS = {
+  circle:   () => [circle(0, 0, 0.95, 120)],
+  heart:    () => [heartStroke()],
+  star:     () => [starStroke()],
+  triangle: () => [triangleStroke()],
+  spiral:   () => [spiralStroke()],
+  infinity: () => [infinityStroke()],
+  wave:     () => [waveStroke()],
+  smiley:   () => [
+    circle(0, 0, 0.95, 100),
+    circle(-0.33, 0.32, 0.13, 24),
+    circle(0.33, 0.32, 0.13, 24),
+    arc(0, -0.05, 0.55, Math.PI * 1.15, Math.PI * 1.85, 50),
+  ],
+  A: () => [
+    [{ x: -0.55, y: -1 }, { x: 0, y: 1 }],
+    [{ x: 0, y: 1 }, { x: 0.55, y: -1 }],
+    [{ x: -0.28, y: -0.1 }, { x: 0.28, y: -0.1 }],
+  ],
+  HI: () => [
+    ...place(H_STROKES, -0.45, 0.42, 0.95),
+    ...place(I_STROKES, 0.5, 0.42, 0.95),
+  ],
+};
+
+// 버튼 목록 [키, 라벨]
+const PATTERN_LIST = [
+  ["circle", "⭕ 원"], ["heart", "❤ 하트"], ["star", "⭐ 별"],
+  ["triangle", "▲ 삼각형"], ["spiral", "🌀 나선"], ["infinity", "∞ 무한대"],
+  ["wave", "〰 물결"], ["smiley", "☺ 스마일"], ["A", "🅰 글자 A"], ["HI", "✍ HI"],
+];
+const AUTO_ORDER = PATTERN_LIST.map(([k]) => k);
+
+// 정규화 획들을 현재 격자 좌표의 "펜 경로(점들)"로 변환 (선분을 잘게 쪼갬)
+function buildPenPath(strokes) {
+  const cx = cols / 2, cy = rows / 2;
+  const half = 0.40 * Math.min(cols, rows);
+  const path = [];
+  for (const stroke of strokes) {
+    const m = stroke.map(v => ({ x: cx + v.x * half, y: cy - v.y * half }));
+    for (let s = 0; s < m.length - 1; s++) {
+      const a = m[s], b = m[s + 1];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      const steps = Math.max(1, Math.round(dist));   // ~1셀 간격
+      for (let k = 0; k < steps; k++) {
+        const f = k / steps;
+        path.push({ x: a.x + dx * f, y: a.y + dy * f });
+      }
+    }
+    const last = m[m.length - 1];
+    path.push({ x: last.x, y: last.y });
+  }
+  return path;
+}
+
+let pen = null;          // {path, idx, speed}
+let autoMode = false;
+let autoIdx = 0;
+let autoDelay = 0;       // 자동 모드에서 다음 패턴까지 남은 프레임
+
+function startPattern(name, clear) {
+  if (clear) { temp.fill(AMBIENT); next.fill(AMBIENT); }
+  const strokes = PATTERNS[name]();
+  const path = buildPenPath(strokes);
+  const duration = 2.6;  // 초
+  const speed = Math.max(2, Math.ceil(path.length / (duration * 60)));
+  pen = { path, idx: 0, speed };
 }
 
 // ---------------------------------------------------------------------------
@@ -399,25 +465,39 @@ function render() {
 // ---------------------------------------------------------------------------
 let hottest = AMBIENT;
 function loop() {
-  for (let s = 0; s < SUBSTEPS; s++) {
-    applyHeat();
-    step();
+  // 자동 그리기: 펜이 놀고 있으면 잠시 후 다음 패턴 시작 (매번 판을 식히고 새로)
+  if (autoMode && !pen) {
+    if (autoDelay <= 0) {
+      startPattern(AUTO_ORDER[autoIdx], true);
+      autoIdx = (autoIdx + 1) % AUTO_ORDER.length;
+    } else {
+      autoDelay--;
+    }
   }
+
+  // 손글씨 펜 진행: 이번 프레임에 그릴 구간을 가열
+  if (pen) {
+    for (let k = 0; k < pen.speed && pen.idx < pen.path.length; k++) {
+      const pt = pen.path[pen.idx++];
+      heatCell(Math.round(pt.x), Math.round(pt.y));
+    }
+    if (pen.idx >= pen.path.length) { pen = null; autoDelay = 70; }
+  }
+
+  for (let s = 0; s < SUBSTEPS; s++) { applyHeat(); step(); }
   render();
 
-  // 가장 뜨거운 지점 표시
   hottest = AMBIENT;
-  for (let i = 0; i < temp.length; i++) {
-    if (temp[i] > hottest) hottest = temp[i];
-  }
+  for (let i = 0; i < temp.length; i++) if (temp[i] > hottest) hottest = temp[i];
   readout.textContent =
-    `최고 온도: ${hottest.toFixed(1)}°C   |   주변: ${AMBIENT}°C   |   격자: ${cols}×${rows}`;
+    `최고 온도: ${hottest.toFixed(1)}°C   |   격자: ${cols}×${rows}` +
+    (autoMode ? "   |   자동 그리기 ON" : "");
 
   requestAnimationFrame(loop);
 }
 
 // ---------------------------------------------------------------------------
-// 입력 처리 (마우스 + 터치, 멀티포인트 지원)
+// 입력 처리 (마우스 + 터치)
 // ---------------------------------------------------------------------------
 function toCell(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
@@ -425,19 +505,14 @@ function toCell(clientX, clientY) {
   const y = Math.floor((clientY - rect.top) / rect.height * rows);
   return { x: Math.max(0, Math.min(cols - 1, x)), y: Math.max(0, Math.min(rows - 1, y)) };
 }
-
 canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, toCell(e.clientX, e.clientY));
 });
 canvas.addEventListener("pointermove", (e) => {
-  if (pointers.has(e.pointerId)) {
-    pointers.set(e.pointerId, toCell(e.clientX, e.clientY));
-  }
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, toCell(e.clientX, e.clientY));
 });
-function release(e) {
-  pointers.delete(e.pointerId);
-}
+function release(e) { pointers.delete(e.pointerId); }
 canvas.addEventListener("pointerup", release);
 canvas.addEventListener("pointercancel", release);
 canvas.addEventListener("pointerleave", release);
@@ -446,25 +521,23 @@ window.addEventListener("resize", resize);
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
 // ---------------------------------------------------------------------------
-// 범례 그리기
+// 범례
 // ---------------------------------------------------------------------------
 function drawLegend() {
   const lc = document.getElementById("legendBar");
   const lctx = lc.getContext("2d");
   const h = lc.height;
   for (let y = 0; y < h; y++) {
-    const t = 1 - y / (h - 1); // 위가 뜨거움
+    const t = 1 - y / (h - 1);
     const [r, g, b] = ironColor(t);
     lctx.fillStyle = `rgb(${r},${g},${b})`;
     lctx.fillRect(0, y, lc.width, 1);
   }
-  // 컬러맵 범위에 맞춰 눈금 라벨 자동 생성 (위=T_MAX, 아래=T_MIN)
-  // 감마 매핑을 반영해, 색 위치 p 에 해당하는 실제 온도를 역변환해서 표기
   const labels = document.getElementById("legendLabels");
   labels.innerHTML = "";
   const STEPS = 5;
   for (let i = 0; i < STEPS; i++) {
-    const p = 1 - i / (STEPS - 1);   // 색 위치 (1=위/뜨거움, 0=아래/차가움)
+    const p = 1 - i / (STEPS - 1);
     const T = T_MIN + (T_MAX - T_MIN) * Math.pow(p, 1 / COLOR_GAMMA);
     const span = document.createElement("span");
     span.textContent = `${Math.round(T)}°C`;
@@ -473,27 +546,66 @@ function drawLegend() {
 }
 
 // ---------------------------------------------------------------------------
-// 하단 슬라이더: 가열 온도 선택 (100~1000°C)
+// 컨트롤 패널 (슬라이더 + 패턴 버튼 + 자동/리셋)
 // ---------------------------------------------------------------------------
-function setupSlider() {
-  const range = document.getElementById("tempRange");
-  const value = document.getElementById("tempValue");
-  const update = () => {
-    HEAT_TEMP = Number(range.value);
-    value.textContent = `${HEAT_TEMP}°C`;
-  };
-  range.addEventListener("input", update);
-  // 슬라이더 조작이 캔버스 가열로 새지 않도록 이벤트 격리
-  ["pointerdown", "pointermove", "pointerup"].forEach((ev) =>
-    range.addEventListener(ev, (e) => e.stopPropagation())
-  );
-  update();
+const SLIDERS = [
+  { label: "가열 온도", min: 100, max: 1000, step: 100, iron: true,
+    get: () => HEAT_TEMP, set: v => HEAT_TEMP = v, fmt: v => v + "°C" },
+  { label: "확산 강도", min: 0.05, max: 0.24, step: 0.01,
+    get: () => ALPHA, set: v => ALPHA = v, fmt: v => v.toFixed(2) },
+  { label: "확산 속도", min: 1, max: 12, step: 1,
+    get: () => SUBSTEPS, set: v => SUBSTEPS = v, fmt: v => v + "×" },
+  { label: "냉각 속도", min: 0, max: 100, step: 1,
+    get: () => Math.round(COOLING * 100000), set: v => COOLING = v / 100000, fmt: v => v },
+  { label: "붓 크기", min: 1, max: 12, step: 1,
+    get: () => BRUSH, set: v => BRUSH = v, fmt: v => v },
+  { label: "해상도(셀)", min: 3, max: 14, step: 1,
+    get: () => CELL_SIZE, set: v => { CELL_SIZE = v; resize(); }, fmt: v => v + "px" },
+];
 
-  // "전체 식히기": 격자를 즉시 상온으로 초기화
-  const resetBtn = document.getElementById("resetBtn");
-  resetBtn.addEventListener("click", () => {
-    temp.fill(AMBIENT);
-    next.fill(AMBIENT);
+function stopBubble(el) {
+  ["pointerdown", "pointermove", "pointerup"].forEach(ev =>
+    el.addEventListener(ev, e => e.stopPropagation()));
+}
+
+function setupControls() {
+  const wrap = document.getElementById("sliders");
+  for (const cfg of SLIDERS) {
+    const div = document.createElement("div"); div.className = "ctl";
+    const top = document.createElement("div"); top.className = "top";
+    const lab = document.createElement("span"); lab.textContent = cfg.label;
+    const val = document.createElement("span"); val.className = "val";
+    top.appendChild(lab); top.appendChild(val);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = cfg.min; input.max = cfg.max; input.step = cfg.step;
+    input.value = cfg.get();
+    if (cfg.iron) input.className = "iron";
+    const upd = () => { const v = Number(input.value); cfg.set(v); val.textContent = cfg.fmt(v); };
+    input.addEventListener("input", upd);
+    stopBubble(input);
+    upd();
+    div.appendChild(top); div.appendChild(input);
+    wrap.appendChild(div);
+  }
+
+  const pwrap = document.getElementById("patterns");
+  for (const [name, label] of PATTERN_LIST) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label;
+    b.addEventListener("click", () => { autoMode = false; syncAutoBtn(); startPattern(name, false); });
+    pwrap.appendChild(b);
+  }
+
+  const autoBtn = document.getElementById("autoBtn");
+  autoBtn.addEventListener("click", () => {
+    autoMode = !autoMode; autoDelay = 0; syncAutoBtn();
+  });
+  function syncAutoBtn() { autoBtn.classList.toggle("on", autoMode); }
+  window.syncAutoBtn = syncAutoBtn;
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    temp.fill(AMBIENT); next.fill(AMBIENT);
   });
 }
 
@@ -503,7 +615,7 @@ function setupSlider() {
 buildLUT();
 resize();
 drawLegend();
-setupSlider();
+setupControls();
 requestAnimationFrame(loop);
 </script>
 </body>
