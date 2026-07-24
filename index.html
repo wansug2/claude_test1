@@ -187,15 +187,18 @@ const AMBIENT   = 20;     // 주변(초기) 온도 [°C]
 let   HEAT_TEMP = 300;    // 가열 지점 온도 [°C] — 하단 슬라이더로 변경
 const T_MIN     = 20;     // 컬러맵 최소 온도
 const T_MAX     = 1000;   // 컬러맵 최대 온도 (슬라이더 최대치에 맞춤)
+// 감마(<1): 저온부에 색 대비를 몰아줘 낮은 온도도 또렷하게 표시.
+// 1000°C 스케일에서도 바깥으로 퍼진 수백 °C의 열이 검게 묻히지 않게 함.
+const COLOR_GAMMA = 0.55;
 const BRUSH     = 3;      // 가열 브러시 반지름 (셀 단위)
 
-// 열확산: 안정성을 위해 알파(확산계수)는 0.24 이하 유지 (2D 명시적 스킴 한계 0.25)
-const ALPHA     = 0.20;   // 확산 강도
+// 열확산: 안정성을 위해 알파(확산계수)는 0.25 미만 유지 (2D 명시적 스킴 한계)
+const ALPHA     = 0.24;   // 확산 강도 (안정 한계 근처까지 올려 확산 가속)
 const COOLING   = 0.0006; // 주변 공기로의 방열 계수 (뉴턴 냉각)
-const SUBSTEPS  = 2;      // 프레임당 시뮬레이션 반복 (확산 속도 ↑)
+const SUBSTEPS  = 4;      // 프레임당 시뮬레이션 반복 (확산 속도 ↑)
 
 // 시뮬레이션 격자 해상도 (실제 화면보다 낮게 잡아 성능 확보)
-const CELL_SIZE = 4;      // 셀 1개가 차지하는 화면 픽셀
+const CELL_SIZE = 5;      // 셀 1개가 차지하는 화면 픽셀 (키울수록 열이 빨리 번짐)
 
 // ---------------------------------------------------------------------------
 // 캔버스 & 격자
@@ -261,6 +264,7 @@ function ironColor(t) {
 function tempToColor(T) {
   let t = (T - T_MIN) / (T_MAX - T_MIN);
   t = Math.max(0, Math.min(1, t));
+  t = Math.pow(t, COLOR_GAMMA);   // 감마 보정: 저온부 색 대비 강조
   return LUT[(t * 1023) | 0];
 }
 
@@ -431,11 +435,13 @@ function drawLegend() {
     lctx.fillRect(0, y, lc.width, 1);
   }
   // 컬러맵 범위에 맞춰 눈금 라벨 자동 생성 (위=T_MAX, 아래=T_MIN)
+  // 감마 매핑을 반영해, 색 위치 p 에 해당하는 실제 온도를 역변환해서 표기
   const labels = document.getElementById("legendLabels");
   labels.innerHTML = "";
   const STEPS = 5;
   for (let i = 0; i < STEPS; i++) {
-    const T = T_MAX - (T_MAX - T_MIN) * (i / (STEPS - 1));
+    const p = 1 - i / (STEPS - 1);   // 색 위치 (1=위/뜨거움, 0=아래/차가움)
+    const T = T_MIN + (T_MAX - T_MIN) * Math.pow(p, 1 / COLOR_GAMMA);
     const span = document.createElement("span");
     span.textContent = `${Math.round(T)}°C`;
     labels.appendChild(span);
