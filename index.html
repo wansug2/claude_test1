@@ -47,7 +47,7 @@
   }
   #legend {
     position: fixed;
-    bottom: 16px;
+    bottom: 120px;         /* 하단 슬라이더 패널 위로 띄움 */
     right: 16px;
     width: 22px;
     height: 180px;
@@ -61,7 +61,7 @@
   }
   #legendLabels {
     position: fixed;
-    bottom: 12px;
+    bottom: 116px;         /* 범례 눈금도 함께 올림 */
     right: 44px;
     height: 190px;
     color: rgba(255, 255, 255, 0.85);
@@ -75,23 +75,107 @@
     user-select: none;
     font-variant-numeric: tabular-nums;
   }
+  /* 하단 온도 선택 슬라이더 */
+  #controls {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    width: min(92vw, 560px);
+    box-sizing: border-box;
+    padding: 12px 16px 14px;
+    background: rgba(15, 15, 18, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: rgba(255, 255, 255, 0.9);
+    user-select: none;
+    -webkit-user-select: none;
+    /* 슬라이더는 캔버스 위에서 조작 가능해야 하므로 pointer-events 활성 */
+  }
+  #controls .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  #controls .label {
+    font-size: 12px;
+    opacity: 0.75;
+  }
+  #controls #tempValue {
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #ffb04a;
+    text-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
+  }
+  #tempRange {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 10px;
+    border-radius: 6px;
+    outline: none;
+    margin: 0;
+    /* 차가움→뜨거움 그라디언트 (iron 컬러맵 근사) */
+    background: linear-gradient(90deg,
+      #000000 0%, #1e003c 12%, #6e0078 30%,
+      #c81e46 50%, #f56e00 68%, #ffc81e 84%, #ffffeb 100%);
+    cursor: pointer;
+  }
+  #tempRange::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #ff8c00;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+  }
+  #tempRange::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #ff8c00;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+  }
+  #tempTicks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 10px;
+    opacity: 0.6;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
 <body>
 <canvas id="sim"></canvas>
 <div id="hud">
   <div class="title">🔥 열화상 열역학 시뮬레이션</div>
-  <div class="hint">철판을 클릭 / 누르고 있으면 300°C로 계속 가열됩니다</div>
+  <div class="hint">철판을 클릭 / 누르고 있으면 선택한 온도로 계속 가열됩니다</div>
   <div id="readout">—</div>
 </div>
-<div id="legendLabels">
-  <span>300°C</span>
-  <span>230°C</span>
-  <span>160°C</span>
-  <span>90°C</span>
-  <span>20°C</span>
-</div>
+<div id="legendLabels"></div>
 <div id="legend"><canvas id="legendBar" width="1" height="180"></canvas></div>
+
+<div id="controls">
+  <div class="row">
+    <span class="label">가열 온도</span>
+    <span id="tempValue">300°C</span>
+  </div>
+  <input id="tempRange" type="range" min="100" max="1000" step="100" value="300">
+  <div id="tempTicks">
+    <span>100</span><span>200</span><span>300</span><span>400</span><span>500</span>
+    <span>600</span><span>700</span><span>800</span><span>900</span><span>1000</span>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -100,9 +184,9 @@
 // 파라미터
 // ---------------------------------------------------------------------------
 const AMBIENT   = 20;     // 주변(초기) 온도 [°C]
-const HEAT_TEMP = 300;    // 가열 지점 온도 [°C]
+let   HEAT_TEMP = 300;    // 가열 지점 온도 [°C] — 하단 슬라이더로 변경
 const T_MIN     = 20;     // 컬러맵 최소 온도
-const T_MAX     = 300;    // 컬러맵 최대 온도
+const T_MAX     = 1000;   // 컬러맵 최대 온도 (슬라이더 최대치에 맞춤)
 const BRUSH     = 3;      // 가열 브러시 반지름 (셀 단위)
 
 // 열확산: 안정성을 위해 알파(확산계수)는 0.24 이하 유지 (2D 명시적 스킴 한계 0.25)
@@ -346,6 +430,34 @@ function drawLegend() {
     lctx.fillStyle = `rgb(${r},${g},${b})`;
     lctx.fillRect(0, y, lc.width, 1);
   }
+  // 컬러맵 범위에 맞춰 눈금 라벨 자동 생성 (위=T_MAX, 아래=T_MIN)
+  const labels = document.getElementById("legendLabels");
+  labels.innerHTML = "";
+  const STEPS = 5;
+  for (let i = 0; i < STEPS; i++) {
+    const T = T_MAX - (T_MAX - T_MIN) * (i / (STEPS - 1));
+    const span = document.createElement("span");
+    span.textContent = `${Math.round(T)}°C`;
+    labels.appendChild(span);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 하단 슬라이더: 가열 온도 선택 (100~1000°C)
+// ---------------------------------------------------------------------------
+function setupSlider() {
+  const range = document.getElementById("tempRange");
+  const value = document.getElementById("tempValue");
+  const update = () => {
+    HEAT_TEMP = Number(range.value);
+    value.textContent = `${HEAT_TEMP}°C`;
+  };
+  range.addEventListener("input", update);
+  // 슬라이더 조작이 캔버스 가열로 새지 않도록 이벤트 격리
+  ["pointerdown", "pointermove", "pointerup"].forEach((ev) =>
+    range.addEventListener(ev, (e) => e.stopPropagation())
+  );
+  update();
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +466,7 @@ function drawLegend() {
 buildLUT();
 resize();
 drawLegend();
+setupSlider();
 requestAnimationFrame(loop);
 </script>
 </body>
