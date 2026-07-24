@@ -104,6 +104,11 @@
     font-size: 12px;
     opacity: 0.75;
   }
+  #controls .right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   #controls #tempValue {
     font-size: 20px;
     font-weight: 700;
@@ -111,6 +116,20 @@
     color: #ffb04a;
     text-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
   }
+  #resetBtn {
+    font: inherit;
+    font-size: 12px;
+    color: #cfe8ff;
+    background: rgba(80, 140, 220, 0.18);
+    border: 1px solid rgba(120, 180, 255, 0.5);
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  #resetBtn:hover { background: rgba(80, 140, 220, 0.35); }
+  #resetBtn:active { background: rgba(80, 140, 220, 0.55); }
   #tempRange {
     -webkit-appearance: none;
     appearance: none;
@@ -168,7 +187,10 @@
 <div id="controls">
   <div class="row">
     <span class="label">가열 온도</span>
-    <span id="tempValue">300°C</span>
+    <span class="right">
+      <span id="tempValue">300°C</span>
+      <button id="resetBtn" type="button">❄ 전체 식히기</button>
+    </span>
   </div>
   <input id="tempRange" type="range" min="100" max="1000" step="100" value="300">
   <div id="tempTicks">
@@ -193,16 +215,14 @@ const COLOR_GAMMA = 0.55;
 const BRUSH     = 3;      // 가열 브러시 반지름 (셀 단위)
 
 // 열확산: 안정성을 위해 알파(확산계수)는 0.25 미만 유지 (2D 명시적 스킴 한계)
-const ALPHA     = 0.24;   // 확산 강도 (안정 한계 근처까지 올려 확산 가속)
-// 뉴턴 냉각: 값이 크면 열이 열점 반경 √(ALPHA/COOLING) 안에 갇혀 판 전체로
-// 안 퍼진다. 아주 작게 잡아 한 점을 오래 누르면 판 전체가 서서히 달궈지도록 함.
-// (그만큼 손을 떼도 식는 데 시간이 오래 걸림 — 단열 철판에 가까운 거동)
-const COOLING   = 0.00001;
-const SUBSTEPS  = 12;     // 프레임당 시뮬레이션 반복 (확산 속도 ↑)
+const ALPHA     = 0.22;   // 확산 강도
+// 뉴턴 냉각: 퍼짐(넓은 영역 가열)과 식음(손 뗐을 때 상온 복귀)의 균형점.
+// 너무 크면 열점만, 너무 작으면 안 식음. 손 떼면 ~15~20초에 걸쳐 식도록 설정.
+const COOLING   = 0.0002;
+const SUBSTEPS  = 5;      // 프레임당 시뮬레이션 반복 (확산 속도)
 
 // 시뮬레이션 격자 해상도 (실제 화면보다 낮게 잡아 성능 확보)
-// 성기게 잡을수록 열이 판 전체로 빨리 번진다 (렌더링은 보간해서 부드럽게 표시)
-const CELL_SIZE = 8;      // 셀 1개가 차지하는 화면 픽셀
+const CELL_SIZE = 6;      // 셀 1개가 차지하는 화면 픽셀
 
 // ---------------------------------------------------------------------------
 // 캔버스 & 격자
@@ -468,6 +488,13 @@ function setupSlider() {
     range.addEventListener(ev, (e) => e.stopPropagation())
   );
   update();
+
+  // "전체 식히기": 격자를 즉시 상온으로 초기화
+  const resetBtn = document.getElementById("resetBtn");
+  resetBtn.addEventListener("click", () => {
+    temp.fill(AMBIENT);
+    next.fill(AMBIENT);
+  });
 }
 
 // ---------------------------------------------------------------------------
